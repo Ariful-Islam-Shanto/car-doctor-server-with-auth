@@ -1,7 +1,7 @@
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const app = express();
 const cors = require('cors');
-const cookieParser = require('cookie-parser');
 var jwt = require('jsonwebtoken');
 
 require('dotenv').config();
@@ -10,36 +10,32 @@ const port = process.env.PORT || 5000;
 
 //? middleware
 app.use(cors({
-    origin: ['http://localhost:5173'],
+    origin : ['http://localhost:5173', 'https://car-doctor-f7cae.web.app'],
     credentials: true
+
 }));
 app.use(express.json());
 app.use(cookieParser());
 
+//?Middleware
+const verifyToken = (req, res, next) => {
+    const token = req.cookies.token;
 
-//? our own middleware
-const verifyToken = async (req, res, next) => {
-    const token = req.cookies?.token;
+    //? if there is no token in cookies return from here.
+
     if(!token) {
-        return res.status(401).send({message : 'Not Authorized'})
+        return res.status(401).send({message : 'unauthorized access'});
     }
 
-    //? Now verify the token.
+    //? If there is token then we will continue to verify it.
     jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
-        //? if error the middleware will send respond to the api that has been called and CRUD method will stop at the middleware. Won't execute the next code.
         if(err) {
-            console.log(err);
-            return res.status(401).send({message: 'not authorized'})
+            return res.status(401).send({message : 'unauthorized access'});
         }
-
-        //? if token is valid then it will be decoded. and it will call the next(). And on the api we are using the middleware will execute the process after the middleware.
-        
-        //? set the decoded to req.user so that the CRUD api can access the valid token user information.
-        req.user = decoded; 
+        req.user = decoded;
         next();
     })
 }
-
 
 app.listen(port, () => {
     console.log(`Port ${port} is running fine.`);
@@ -68,21 +64,31 @@ const client = new MongoClient(uri, {
         const serviceCollection = database.collection('services');
         const bookingCollection = database.collection('bookings');
 
-        //* Auth api
-        app.post('/jwt', async(req, res) => {
-            const user = req.body;
-            const secret = process.env.ACCESS_TOKEN_SECRET;
-            const token = jwt.sign(user,secret,{expiresIn: '1h'});
-            res
-            .cookie('token', token, {
-                httpOnly: true,
-                secure: false,
-                // sameSite: 'none'
-            })
-            .send({success : true});
+       //? Auth api
+       app.post('/jwt', async( req, res) => {
+         const user = req.body;
+        
+         //* now generate the token
+         const secret = process.env.ACCESS_TOKEN_SECRET;
+         const token = jwt.sign(user, secret, {expiresIn : '1h'});
+         res
+         .cookie('token', token, {
+            httpOnly: true,
+            secure: true,
+            sameSite: 'none'
+         })
+         .send({success : true});
+       })
 
-        })
-
+       //? If the user logged out then clear the cookie
+       app.post('/clearCookie', async(req, res) => {
+        const user = req.body;
+        console.log(user);
+        res
+        .clearCookie('token', { maxAge : 0 })
+        .send('Successfully cleared the cookie');
+       })
+       
         //* Services api
         app.get('/services', async (req, res) => {
             const cursor = serviceCollection.find();
@@ -100,17 +106,11 @@ const client = new MongoClient(uri, {
 
         //? Give the verify token to verify the user.
 
-        app.get('/bookings', verifyToken, async(req, res) => {
-            
-            // console.log('token', req.cookies.token);
-            //? this  is from verifyToken (req.user)
-            console.log('valid token user', req.user);
-            
-            //? check if the token user email matches to the query email. If not return the process with 401(UnAuthorized) status and a message.
+        app.get('/bookings',verifyToken, async(req, res) => {
+            //? Check if the api or query email is same as the token user email
             if(req.query.email !== req.user.email) {
-                return res.status(401).send({message: 'not authorized'})
+                return res.status(403).send({message : 'forbidden access'})
             }
-
             //? There is also a params called query we can give any value when we req the fetch method from client side.
 
             //* 01. Just like this (url/url?theQueryGoesHere=value&AnotherOne=AnotherValue).
