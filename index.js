@@ -12,7 +12,6 @@ const port = process.env.PORT || 5000;
 app.use(cors({
     origin : ['http://localhost:5173', 'https://car-doctor-f7cae.web.app'],
     credentials: true
-
 }));
 app.use(express.json());
 app.use(cookieParser());
@@ -81,12 +80,12 @@ const client = new MongoClient(uri, {
        })
 
        //? If the user logged out then clear the cookie
+
        app.post('/clearCookie', async(req, res) => {
         const user = req.body;
         console.log(user);
-        res
-        .clearCookie('token', { maxAge : 0 })
-        .send('Successfully cleared the cookie');
+        //! when clearing the cookie make sure to give secure : true and samSite : "none" into the value object.
+        res.clearCookie('token', { maxAge : 0 , secure : true, sameSite : 'none' }).send('Successfully cleared the cookie');
        })
        
         //* Services api
